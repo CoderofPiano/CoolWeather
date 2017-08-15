@@ -1,10 +1,12 @@
 package com.archermind.coolweather.db;
 
+import org.litepal.crud.DataSupport;
+
 /**
  * Created by archermind on 17-8-8.
  */
 
-public class City {
+public class City extends DataSupport{
     private int id;
     private String cityName;
     private int cityCode;
