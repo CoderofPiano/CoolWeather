@@ -2,7 +2,10 @@ package com.archermind.coolweather.fragment;
 
 import android.app.ProgressDialog;
 import android.content.Intent;
+import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
 import android.util.Log;
@@ -12,10 +15,12 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.archermind.coolweather.MainActivity;
 import com.archermind.coolweather.R;
 import com.archermind.coolweather.WeatherActivity;
 import com.archermind.coolweather.db.City;
@@ -29,6 +34,7 @@ import org.litepal.crud.DataSupport;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -44,6 +50,7 @@ public class ChooseAreaFragment extends Fragment {
     public static final int LEVEL_CITY=1;
     public static final int LEVEL_COUNTY=2;
 
+    private ImageView backImgView;
     private ProgressDialog progressDialog;
     private TextView titleText;
     private Button backButton;
@@ -61,6 +68,26 @@ public class ChooseAreaFragment extends Fragment {
 
     private int currentLevel;
 
+    private static final int[] SPLASH_ARRAY = {
+            R.drawable.splash0,
+            R.drawable.splash1,
+            R.drawable.splash2,
+            R.drawable.splash3,
+            R.drawable.splash4,
+            R.drawable.splash5,
+            R.drawable.splash6,
+            R.drawable.splash7,
+            R.drawable.splash8,
+            R.drawable.splash9,
+            R.drawable.splash10,
+            R.drawable.splash11,
+            R.drawable.splash12,
+            R.drawable.splash13,
+            R.drawable.splash14,
+            R.drawable.splash15,
+            R.drawable.splash16,
+    };
+
 
 
     public ChooseAreaFragment() {
@@ -71,6 +98,7 @@ public class ChooseAreaFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view=inflater.inflate(R.layout.choose_area,container,false);
+        backImgView=view.findViewById(R.id.back_img);
         titleText=view.findViewById(R.id.title_text);
         backButton=view.findViewById(R.id.back_button);
         listView=view.findViewById(R.id.list_view);
@@ -83,6 +111,9 @@ public class ChooseAreaFragment extends Fragment {
     @Override
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
+        Random r = new Random(SystemClock.elapsedRealtime());
+        backImgView.setImageResource(SPLASH_ARRAY[r.nextInt(SPLASH_ARRAY.length)]);
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -94,10 +125,19 @@ public class ChooseAreaFragment extends Fragment {
                     queryCounties();
                 }else if (currentLevel==LEVEL_COUNTY){
                     String weatherId=countyList.get(position).getWeatherId();
-                    Intent intent=new Intent(getActivity(), WeatherActivity.class);
-                    intent.putExtra("weather_id",weatherId);
-                    startActivity(intent);
-                    getActivity().finish();
+                    if (getActivity()instanceof MainActivity){
+                        Intent intent=new Intent(getActivity(), WeatherActivity.class);
+                        intent.putExtra("weather_id",weatherId);
+                        startActivity(intent);
+                        getActivity().finish();
+                    }else if (getActivity() instanceof WeatherActivity){
+                        WeatherActivity activity=(WeatherActivity)getActivity();
+                        activity.drawerLayout.closeDrawers();
+                        activity.swipeRefresh.setRefreshing(true);
+                        activity.curWeatherId=weatherId;
+                        activity.requestWeather(weatherId);
+                    }
+
                 }
             }
         });
