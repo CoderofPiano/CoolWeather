@@ -1,0 +1,213 @@
+一、UiccCard的主要功能
+    public boolean isApplicationOnIcc(IccCardApplicationStatus.AppType type) {}  
+    public UiccCardApplication getApplication(int family) {}  
+    public UiccCardApplication getApplicationIndex(int index) {}  
+    public void registerForAbsent(Handler h, int what, Object obj) {}  
+    public CardState getCardState() {}  
+UiccCard的主要功能为；
+    1、创建和向外提供UiccCardApplication对象
+    2、接受注册SIM卡是否存在的监听器
+    3、得到当前的SIM状态对象：CardState
+
+二、UiccCard的初始化过程
+上一章知道了UiccCard在UiccController中创建或更新：
+    private synchronized void onGetIccCardStatusDone(AsyncResult ar, Integer index) {
+
+        IccCardStatus status = (IccCardStatus)ar.result;
+
+        if (mUiccCards[index] == null) {
+            //Create new card
+        	
+            // [L_50_PORTING] s: Mavis 20140923
+            // mUiccCards[index] = new UiccCard(mContext, mCis[index], status, index);
+            mUiccCards[index] = new UiccCard(mContext, mCis[index], status, index, mPhone[index]);
+            // [L_50_PORTING] e: Mavis 20140923
+        } else {
+            //Update already existing card
+            mUiccCards[index].update(mContext, mCis[index] , status);
+        }
+
+
+UiccCard.java
+    public UiccCard(Context c, CommandsInterface ci, IccCardStatus ics, int phoneId) {
+        mCardState = ics.mCardState;
+        mPhoneId = phoneId;
+        update(c, ci, ics);
+    }
+
+三、UiccCard的更新过程
+前面可以看到，如果是第一次收到SIM卡状态改变那么会创建UiccCard实例，里面保存了phoneId和RIL对象，然后在update(c, ci, ics),所以关键要看update()：
+    public void update(Context c, CommandsInterface ci, IccCardStatus ics) {
+        synchronized (mLock) {
+            CardState oldState = mCardState;
+            mCardState = ics.mCardState;
+            mUniversalPinState = ics.mUniversalPinState;
+            mGsmUmtsSubscriptionAppIndex = ics.mGsmUmtsSubscriptionAppIndex;
+            mCdmaSubscriptionAppIndex = ics.mCdmaSubscriptionAppIndex;
+            mImsSubscriptionAppIndex = ics.mImsSubscriptionAppIndex;
+            mContext = c;
+            mCi = ci;
+
+            //update applications
+            if (DBG) log(ics.mApplications.length + " applications");
+            for ( int i = 0; i < mUiccApplications.length; i++) {
+                if (mUiccApplications[i] == null) {
+                    //Create newly added Applications
+                    if (i < ics.mApplications.length) {
+			 //创建UiccCardApplication对象 
+                        mUiccApplications[i] = new UiccCardApplication(this,
+                                ics.mApplications[i], mContext, mCi);
+                    }
+                } else if (i >= ics.mApplications.length) {
+                    //Delete removed applications
+                    mUiccApplications[i].dispose();
+                    mUiccApplications[i] = null;
+                } else {
+                    //创建UiccCardApplication对象 
+                    mUiccApplications[i].update(ics.mApplications[i], mContext, mCi);
+                }
+            }
+		
+	    //创建或更新CatService
+            createAndUpdateCatService();
+
+            // Reload the carrier privilege rules if necessary.
+            log("Before privilege rules: " + mCarrierPrivilegeRules + " : " + mCardState);
+            if (mCarrierPrivilegeRules == null && mCardState == CardState.CARDSTATE_PRESENT) {
+                mCarrierPrivilegeRules = new UiccCarrierPrivilegeRules(this,
+                        mHandler.obtainMessage(EVENT_CARRIER_PRIVILIGES_LOADED));
+            } else if (mCarrierPrivilegeRules != null && mCardState != CardState.CARDSTATE_PRESENT) {
+                mCarrierPrivilegeRules = null;
+            }
+
+            sanitizeApplicationIndexes();
+
+            RadioState radioState = mCi.getRadioState();
+            if (DBG) log("update: radioState=" + radioState + " mLastRadioState="
+                    + mLastRadioState);
+            // No notifications while radio is off or we just powering up
+            if (radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON) {
+                if (oldState != CardState.CARDSTATE_ABSENT &&
+                        mCardState == CardState.CARDSTATE_ABSENT) {
+                    if (DBG) log("update: notify card removed");
+                    mAbsentRegistrants.notifyRegistrants();
+                    mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_REMOVED, null));
+                } else if (oldState == CardState.CARDSTATE_ABSENT &&
+                        mCardState != CardState.CARDSTATE_ABSENT) {
+                    if (DBG) log("update: notify card added");
+                    mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_ADDED, null));
+                }
+            }
+            mLastRadioState = radioState;
+        }
+    }
+
+在update()方法中取出了IccCardStatus的各个状态来更新到UiccCard中，之后创建了UiccCardApplication和CatService对象：
+    protected void createAndUpdateCatService() {
+        if (mUiccApplications.length > 0 && mUiccApplications[0] != null) {
+            // Initialize or Reinitialize CatService
+            if (mCatService == null) {
+                mCatService = CatService.getInstance(mCi, mContext, this, mPhoneId);
+            } else {
+                ((CatService)mCatService).update(mCi, mContext, this);
+            }
+        } else {
+            if (mCatService != null) {
+                mCatService.dispose();
+            }
+            mCatService = null;
+        }
+    }
+注意这里的CatService.getInstance(mCi, mContext, this, mPhoneId)传入了RIL实例和PhoneId，虽然使用的是getInstance（）但其实CatService并不只有一个实例，
+而是会根据SIM卡的数量创建一个数组，所以这里才需要传入每张SIM对应的RIL和phoneId的实例。
+    public static CatService getInstance(CommandsInterface ci,
+            Context context, UiccCard ic, int slotId) {
+        UiccCardApplication ca = null;
+        IccFileHandler fh = null;
+        IccRecords ir = null;
+
+        synchronized (sInstanceLock) {
+            if (sInstance == null) {
+                int simCount = TelephonyManager.getDefault().getSimCount();
+                sInstance = new CatService[simCount];
+                for (int i = 0; i < simCount; i++) {
+                    sInstance[i] = null;
+                }
+            }
+            
+            return sInstance[slotId];
+        }
+    }
+
+UiccCard的初始化过程中，完成了非常重要的三个任务：
+        1、创建和更新UiccCardApplication对象；
+        2、初始化CatService
+        3、当检测到SIM卡的拔出或插入动作后，通过mHandler对象弹出提示框是否重启手机
+
+四、UiccCard对SIM卡移除/插入的处理：
+   回到UiccCard.update()继续往下看：
+            RadioState radioState = mCi.getRadioState();
+            if (DBG) log("update: radioState=" + radioState + " mLastRadioState="
+                    + mLastRadioState);
+            // No notifications while radio is off or we just powering up
+            if (radioState == RadioState.RADIO_ON && mLastRadioState == RadioState.RADIO_ON) {
+                if (oldState != CardState.CARDSTATE_ABSENT &&
+                        mCardState == CardState.CARDSTATE_ABSENT) {
+                    if (DBG) log("update: notify card removed");
+                    mAbsentRegistrants.notifyRegistrants();
+                    mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_REMOVED, null));
+                } else if (oldState == CardState.CARDSTATE_ABSENT &&
+                        mCardState != CardState.CARDSTATE_ABSENT) {
+                    if (DBG) log("update: notify card added");
+                    mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_ADDED, null));
+                }
+            }
+            mLastRadioState = radioState;
+        }
+这里就是比较CardState的old状态和当前状态来判断SIM卡是ABSENT还是ADDED，然后发出对应的msg
+    protected Handler mHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg){
+            switch (msg.what) {
+                case EVENT_CARD_REMOVED:
+                    onIccSwap(false);
+                    break;
+                case EVENT_CARD_ADDED:
+                    onIccSwap(true);
+                    break;
+   }
+
+进入onIccSwap（）
+    private void onIccSwap(boolean isAdded) {
+
+        boolean isHotSwapSupported = mContext.getResources().getBoolean(
+                R.bool.config_hotswapCapable);
+
+        if (isHotSwapSupported) {
+            log("onIccSwap: isHotSwapSupported is true, don't prompt for rebooting");
+            return;
+        }
+        log("onIccSwap: isHotSwapSupported is false, prompt for rebooting");
+
+        promptForRestart(isAdded);
+    }
+
+    private void promptForRestart(boolean isAdded) {
+        synchronized (mLock) {
+            final Resources res = mContext.getResources();
+            final String dialogComponent = res.getString(
+                    R.string.config_iccHotswapPromptForRestartDialogComponent);
+            if (dialogComponent != null) {
+                Intent intent = new Intent().setComponent(ComponentName.unflattenFromString(
+                        dialogComponent)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(EXTRA_ICC_CARD_ADDED, isAdded);
+                try {
+                    mContext.startActivity(intent);
+                    return;
+                } catch (ActivityNotFoundException e) {
+                    loge("Unable to find ICC hotswap prompt for restart activity: " + e);
+                }
+            }
+
+    }
+弹出SIM卡插拔的提示框。
