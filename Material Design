@@ -1,0 +1,411 @@
+Material Design是google在2014年推出的一套全新的界面设计语言，是一种设计理念。
+为了体现这种理念，google自己开发了一些相应的UI控件给到开发者，主要放在了support_V4和v7两个包里。
+主要包括：
+1,DrawerLayout
+用于实现抽屉式UI的布局，允许放入两个直接子控件。第一个为直接可视的主屏幕内容;第二个为隐藏在抽屉里的内容，通过左右滑动拉出，一般都会使用NavigationView。
+
+2,NavigationView
+与DrawerLayout共同使用实现抽屉式UI，主要注意他的两个属性app:menu 和app:headerLayout。
+
+3,CoodinatorLayput
+一个加强版的FrameLayout,可以监听其所有子控件的的各种事件，然后自动地帮助我们作出某种指定或默认的行为。具体实现方式是在是在其一个子控件A中添加app:layout_behavior属性，
+在另一个子控件B中添加相应的的相应属性 app:layout_scrollFlags，CoodinatorLayput在其中起到控制作用，就是子控件A发生事件后，通过CoodinatorLayput的控制操纵让子控件B做一定的相应，比如移动隐藏等。
+
+4,AppBarLayout
+一般与ToolBar,CoodinatorLayput等一起使用，让ToolBar显示在屏幕顶部的同时响应一些事件。
+
+5,CollapsingToolbarLayout
+作用与ToolBar之上，并并限定只能作为AppBarLayout的直接子布局来使用，可以实现ToolBar的折叠效果。
+
+6,ToolBar
+更加灵活的ActionBar,与其他Material控件配合实现更多灵活效果。
+
+7,RecyclerView
+优化版的ListView,可通过各类LayoutManager实现各样式的Adapter的加载，比如横向，多列。同时使用ViewHolder提靠效率。
+
+8,CardView
+卡片是布局，本身是个FrameLayout,主要通过属性app:cardCornerRadius实现卡片样式。
+
+9,SwipeRefreshLayout
+实现了下拉刷新功能，通过对该控件设置SwipeRefreshLayout.OnRefreshListener()来相应下拉事件。
+
+10,NestedScrollView
+实现了相应滑动事件的ScrollView，允许通过滑动的方式来查看屏幕外的View,注意与ListView的区别。
+
+11,FloatingActionBar
+悬浮按钮，悬浮在UI上面，实现UI的立体视觉效果。重要属性android:elevation
+
+12,SnackBar
+可交互的提示按钮，使用方式Snackbar.make().setAction().show();
+
+布局一：
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.v4.widget.DrawerLayout
+        android:id="@+id/drawer_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+
+        <android.support.design.widget.CoordinatorLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <android.support.design.widget.AppBarLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <android.support.v7.widget.Toolbar
+                    android:id="@+id/toolbar"
+                    android:layout_width="match_parent"
+                    android:layout_height="?attr/actionBarSize"
+                    android:background="?attr/colorPrimary"
+                    android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+                    app:layout_scrollFlags="scroll|enterAlways|snap"
+                    app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+            </android.support.design.widget.AppBarLayout>
+
+            <android.support.v4.widget.SwipeRefreshLayout
+                android:id="@+id/swipe_refresh"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+            <android.support.v7.widget.RecyclerView
+                android:id="@+id/recycler_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#999"/>
+            </android.support.v4.widget.SwipeRefreshLayout>
+
+            <android.support.design.widget.FloatingActionButton
+                android:id="@+id/floatBt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="16dp"
+                android:elevation="10dp"
+                android:src="@drawable/icon_float" />
+        </android.support.design.widget.CoordinatorLayout>
+
+        <LinearLayout
+            android:id="@+id/nav_layout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="start"
+            android:orientation="vertical">
+
+            <android.support.design.widget.NavigationView
+                android:id="@+id/nav_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="start"
+                app:headerLayout="@layout/nav_header"
+                app:menu="@menu/nav_menu" />
+        </LinearLayout>
+    </android.support.v4.widget.DrawerLayout>
+
+</FrameLayout>
+
+
+public class MainActivity extends AppCompatActivity {
+
+    private DrawerLayout mDrawerlayout;
+    private NavigationView mNavigationView;
+    private FloatingActionButton mFloatView;
+    private RecyclerView mRecyclerView;
+    private SwipeRefreshLayout mSwipeLayout;
+
+    private List<Anime> animeList=new ArrayList<>();
+    private AnimeAdapter adapter;
+
+    private Anime[] animes = {
+            new Anime("火影鸣人", R.drawable.p1),
+            new Anime("草帽路飞", R.drawable.p2),
+            new Anime("四皇红发", R.drawable.p3),
+            new Anime("橡皮路飞", R.drawable.p4),
+            new Anime("厨师香吉", R.drawable.p5),
+            new Anime("海贼剑客", R.drawable.p6),
+            new Anime("公主菲菲", R.drawable.p7),
+            new Anime("火拳艾斯", R.drawable.p8),
+            new Anime("海贼娜美", R.drawable.p9),
+            new Anime("海贼三女", R.drawable.p10),
+            new Anime("火影佐助", R.drawable.p11)
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        Toolbar toolbar=(Toolbar)findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
+        mDrawerlayout=(DrawerLayout)findViewById(R.id.drawer_layout);
+        mNavigationView=(NavigationView )findViewById(R.id.nav_view);
+        mNavigationView.setCheckedItem(R.id.nav_music);
+        mFloatView=(FloatingActionButton)findViewById(R.id.floatBt);
+        mRecyclerView=(RecyclerView)findViewById(R.id.recycler_view);
+        mSwipeLayout=(SwipeRefreshLayout)findViewById(R.id.swipe_refresh);
+
+        mSwipeLayout.setColorSchemeResources(R.color.colorAccent);
+        mSwipeLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            Thread.sleep(2000);
+                        }catch (InterruptedException e){
+                            e.printStackTrace();
+                        }
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                initAnimes();
+                                adapter.notifyDataSetChanged();
+                                mSwipeLayout.setRefreshing(false);
+                            }
+                        });
+
+                    }
+                }).start();
+            }
+        });
+
+        mNavigationView.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener() {
+            @Override
+            public boolean onNavigationItemSelected(MenuItem item) {
+                switch (item.getItemId()){
+                    case R.id.nav_music:
+                        Toast.makeText(MainActivity.this,"You clicked Music !", Toast.LENGTH_SHORT).show();
+                        break;
+                    case R.id.nav_model:
+                        Toast.makeText(MainActivity.this,"You clicked Model !", Toast.LENGTH_SHORT).show();
+                        break;
+                    case R.id.nav_movie:
+                        Toast.makeText(MainActivity.this,"You clicked Movie !", Toast.LENGTH_SHORT).show();
+                        break;
+                    case R.id.nav_record:
+                        Toast.makeText(MainActivity.this,"You clicked Record !", Toast.LENGTH_SHORT).show();
+                        break;
+                    case R.id.nav_setting:
+                        Toast.makeText(MainActivity.this,"You clicked Setting !", Toast.LENGTH_SHORT).show();
+                        break;
+                    default:
+                }
+                return true;
+            }
+        });
+        mFloatView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Snackbar.make(view,"打开拨号盘，拨打10010 !",Snackbar.LENGTH_SHORT).setAction("DO", new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        Toast.makeText(MainActivity.this,"确定拨打电话！", Toast.LENGTH_SHORT).show();
+                    }
+                }).show();
+            }
+        });
+
+        initAnimes();
+        GridLayoutManager layoutManager=new GridLayoutManager(this,2);
+        mRecyclerView.setLayoutManager(layoutManager);
+        adapter=new AnimeAdapter(animeList);
+        mRecyclerView.setAdapter(adapter);
+        ActionBar actionBar=getSupportActionBar();
+        if (actionBar!=null){
+            actionBar.setDisplayHomeAsUpEnabled(true);
+        }
+
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.toolbar,menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()){
+            case android.R.id.home:
+                mDrawerlayout. openDrawer(GravityCompat.START);
+                break;
+            case R.id.backup:
+                Toast.makeText(this,"You clicked Backup !", Toast.LENGTH_SHORT).show();
+                break;
+            case R.id.delete:
+                Toast.makeText(this,"You clicked Delete !", Toast.LENGTH_SHORT).show();
+                break;
+            case R.id.settings:
+                Toast.makeText(this,"You clicked Settings !", Toast.LENGTH_SHORT).show();
+                break;
+            default:
+        }
+        return true;
+    }
+
+    public void initAnimes(){
+        animeList.clear();
+        for (int i=0;i<50;i++){
+            Random random=new Random();
+            int index=random.nextInt(animes.length);
+            animeList.add(animes[index]);
+        }
+    }
+}
+
+
+布局二：
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.design.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.support.design.widget.AppBarLayout
+        android:id="@+id/appBar"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        >
+        <android.support.design.widget.CollapsingToolbarLayout
+            android:id="@+id/collapsing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed"
+            app:statusBarScrim="@null">
+
+            <ImageView
+                android:id="@+id/anim_image_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                app:layout_collapseMode="parallax"/>
+            <android.support.v7.widget.Toolbar
+                android:id="@+id/toolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                app:layout_collapseMode="pin"/>
+        </android.support.design.widget.CollapsingToolbarLayout>
+    </android.support.design.widget.AppBarLayout>
+
+
+
+    <android.support.v4.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <android.support.v7.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="35dp"
+                android:layout_marginBottom="15dp"
+                android:layout_marginLeft="15dp"
+                android:layout_marginRight="15dp"
+                app:cardCornerRadius="4dp">
+
+                <TextView
+                    android:id="@+id/anim_content_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="10dp"/>
+            </android.support.v7.widget.CardView>
+        </LinearLayout>
+    </android.support.v4.widget.NestedScrollView>
+
+
+    <android.support.design.widget.FloatingActionButton
+        android:id="@+id/floatView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_anchor="@id/appBar"
+        android:src="@drawable/ico_comment"
+        android:layout_margin="16dp"
+        app:layout_anchorGravity="bottom|end"/>
+</android.support.design.widget.CoordinatorLayout>
+
+
+Adapter:
+public class AnimeAdapter extends RecyclerView.Adapter<AnimeAdapter.ViewHolder>{
+    private Context mContext;
+    private List<Anime> animeList;
+
+    static class ViewHolder extends RecyclerView.ViewHolder{
+        CardView cardView;
+        ImageView animeImage;
+        TextView animeName;
+        public ViewHolder(View view){
+            super(view);
+            cardView=(CardView)view;
+            animeImage=(ImageView)view.findViewById(R.id.anime_image);
+            animeName=(TextView)view.findViewById(R.id.anime_name);
+        }
+    }
+
+    public AnimeAdapter(List<Anime> list){
+        animeList=list;
+    }
+
+    @Override
+    public ViewHolder onCreateViewHolder(ViewGroup parent,int viewType){
+        if (mContext==null){
+            mContext=parent.getContext();
+        }
+
+        final ViewHolder holder;
+        View view= LayoutInflater.from(mContext).inflate(R.layout.anime_item,parent,false);
+        holder= new ViewHolder(view);
+        holder.cardView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                int position=holder.getAdapterPosition();
+                Anime anime= animeList.get(position);
+                Intent intent=new Intent(mContext,AnimeActivity.class);
+                intent.putExtra(AnimeActivity.ANIME_IMAGE_ID,anime.getImageId());
+                intent.putExtra(AnimeActivity.ANIME_NAME,anime.getName());
+                mContext.startActivity(intent);
+            }
+        });
+
+        holder.animeImage.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                int position=holder.getAdapterPosition();
+                Anime anime= animeList.get(position);
+                Toast.makeText(mContext,"you clicked ImageView "+ anime.getName(),Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        return holder;
+    }
+
+    @Override
+    public void onBindViewHolder(ViewHolder holder, int position) {
+        Anime anime=animeList.get(position);
+        holder.animeName.setText(anime.getName());
+        Glide.with(mContext).load(anime.getImageId()).into(holder.animeImage);
+    }
+
+    @Override
+    public int getItemCount(){
+        return animeList.size();
+    }
+}
+
+
+
