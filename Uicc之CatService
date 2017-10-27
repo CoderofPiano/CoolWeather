@@ -1,0 +1,465 @@
+CatService主要负责STK菜单的相关事宜，是Stk架构在Framework层的核心类。
+作用：1，解析自RIL上报的SIM卡中的数据然后以广播的形式上报给Stk app，方法为handleCommand（）
+      2,上层Stk app持有CatService实例ie，通过调用其onCmdResponse(）方法向RIL传递用户操作。
+
+一、CatService的创建过程
+在前面我们分析过，在UiccCard的更新过程中，会初始化CatService对象：
+
+UiccCard.java
+    public void update(Context c, CommandsInterface ci, IccCardStatus ics) {
+        synchronized (mLock) {
+            //[L51_porting] s: Angela
+            if (mDestroyed) {
+                loge("Updated after destroyed! Fix me!");
+                return;
+            }
+            //[L51_porting] e: Angela
+            
+            CardState oldState = mCardState;
+            mCardState = ics.mCardState;
+            mUniversalPinState = ics.mUniversalPinState;
+            mGsmUmtsSubscriptionAppIndex = ics.mGsmUmtsSubscriptionAppIndex;
+            mCdmaSubscriptionAppIndex = ics.mCdmaSubscriptionAppIndex;
+            mImsSubscriptionAppIndex = ics.mImsSubscriptionAppIndex;
+            mContext = c;
+            mCi = ci;
+            
+	    ....
+            createAndUpdateCatService();
+            }
+
+    protected void createAndUpdateCatService() {
+        // [JB_422_PORTING] s: Mavis
+        if (mDestroyed) {
+            loge("createAndUpdateCatService after destroyed! Fix me!");
+            return;
+        }
+        // [JB_422_PORTING] e: Mavis
+        
+        if (mUiccApplications.length > 0 && mUiccApplications[0] != null) {
+            // Initialize or Reinitialize CatService
+            if (mCatService == null) {
+		//创建CatService 
+                mCatService = CatService.getInstance(mCi, mContext, this, mPhoneId);
+            } else {
+                ((CatService)mCatService).update(mCi, mContext, this);
+            }
+        } else {
+            if (mCatService != null) {
+                mCatService.dispose();
+            }
+            mCatService = null;
+        }
+    }
+
+那什么时候更新UiccCard啦？这的从Phone应用启动开始说起。
+Phone应用开机启动进入PhoneGlobals.onCreate()创建Phone对象
+public void onCreate() {
+        if (VDBG) Log.v(LOG_TAG, "onCreate()...");
+
+        ContentResolver resolver = getContentResolver();
+
+        // Cache the "voice capable" flag.
+        // This flag currently comes from a resource (which is
+        // overrideable on a per-product basis):
+        sVoiceCapable =
+                getResources().getBoolean(com.android.internal.R.bool.config_voice_capable);
+        // ...but this might eventually become a PackageManager "system
+        // feature" instead, in which case we'd do something like:
+        // sVoiceCapable =
+        //   getPackageManager().hasSystemFeature(PackageManager.FEATURE_TELEPHONY_VOICE_CALLS);
+
+        if (mCM == null) {
+            // Initialize the telephony framework
+            PhoneFactory.makeDefaultPhones(this);
+	....
+
+ }
+
+    public static void makeDefaultPhone(Context context) {
+	....
+
+        // Instantiate UiccController so that all other classes can just
+        // call getInstance()
+        sUiccController = UiccController.make(context, sCommandsInterfaces);
+	....
+   }
+
+这里就会去创建UiccController对象，该对象只有一个
+    public static UiccController make(Context c, CommandsInterface[] ci) {
+        synchronized (mLock) {
+            if (mInstance != null) {
+                throw new RuntimeException("MSimUiccController.make() should only be called once");
+            }
+            mInstance = new UiccController(c, ci);
+            return (UiccController)mInstance;
+        }
+    }
+
+    private UiccController(Context c, CommandsInterface []ci) {
+        if (DBG) log("Creating UiccController");
+        mContext = c;
+        mCis = ci;
+        for (int i = 0; i < mCis.length; i++) {
+            Integer index = new Integer(i);
+            mCis[i].registerForIccStatusChanged(this, EVENT_ICC_STATUS_CHANGED, index);
+            // TODO remove this once modem correctly notifies the unsols
+            // If the device has been decrypted or FBE is supported, read SIM when radio state is
+            // available.
+            // Else wait for radio to be on. This is needed for the scenario when SIM is locked --
+            // to avoid overlap of CryptKeeper and SIM unlock screen.
+            if (DECRYPT_STATE.equals(SystemProperties.get("vold.decrypt")) ||
+                    StorageManager.isFileEncryptedNativeOrEmulated()) {
+                mCis[i].registerForAvailable(this, EVENT_ICC_STATUS_CHANGED, index);
+            } else {
+                mCis[i].registerForOn(this, EVENT_ICC_STATUS_CHANGED, index);
+            }
+            mCis[i].registerForNotAvailable(this, EVENT_RADIO_UNAVAILABLE, index);
+            mCis[i].registerForIccRefresh(this, EVENT_SIM_REFRESH, index);
+        }
+
+        mLauncher = new UiccStateChangedLauncher(c, this);
+    }
+
+可以看到在创建UiccController的时候根据index的不同分别想不同的RIL实例中注册的监听，这里主要就是mCis[i].registerForIccStatusChanged(this, EVENT_ICC_STATUS_CHANGED, index);
+之后在RIL收到Modem主动上报的SIM状态改变的消息后就会一层层上报：
+RIL.java
+    private void
+    processUnsolicited (Parcel p, int type) {
+
+	 int response;
+        Object ret;
+
+        response = p.readInt();
+     switch(response) {
+            case RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED:
+                if (RILJ_LOGD) unsljLog(response);
+
+                if (mIccStatusChangedRegistrants != null) {
+                    mIccStatusChangedRegistrants.notifyRegistrants();
+                }
+                break;
+}
+
+mIccStatusChangedRegistrants.notifyRegistrants()这里就会通知前面注册的UiccController
+ public void handleMessage (Message msg) {
+        synchronized (mLock) {
+            Integer index = getCiIndex(msg);
+
+            if (index < 0 || index >= mCis.length) {
+                Rlog.e(LOG_TAG, "Invalid index : " + index + " received with event " + msg.what);
+                return;
+            }
+
+            AsyncResult ar = (AsyncResult)msg.obj;
+            switch (msg.what) {
+                case EVENT_ICC_STATUS_CHANGED:
+                    if (DBG) log("Received EVENT_ICC_STATUS_CHANGED, calling getIccCardStatus, index=" + index);
+                    mCis[index].getIccCardStatus(obtainMessage(EVENT_GET_ICC_STATUS_DONE, index));
+                    break;
+	        case EVENT_GET_ICC_STATUS_DONE:
+                    if (DBG) log("Received EVENT_GET_ICC_STATUS_DONE, index=" + index);
+                    onGetIccCardStatusDone(ar, index);
+                    break;
+	}
+调用mCis[index].getIccCardStatus(）去获得卡的状态在回到case EVENT_GET_ICC_STATUS_DONE:
+    private synchronized void onGetIccCardStatusDone(AsyncResult ar, Integer index) {
+        if (ar.exception != null) {
+            Rlog.e(LOG_TAG,"Error getting ICC status. "
+                    + "RIL_REQUEST_GET_ICC_STATUS should "
+                    + "never return an error", ar.exception);
+            return;
+        }
+        if (!isValidCardIndex(index)) {
+            Rlog.e(LOG_TAG,"onGetIccCardStatusDone: invalid index : " + index);
+            return;
+        }
+
+        IccCardStatus status = (IccCardStatus)ar.result;
+
+        if (mUiccCards[index] == null) {
+            //Create new card
+        	
+            // [L_50_PORTING] s: Mavis 20140923
+            // mUiccCards[index] = new UiccCard(mContext, mCis[index], status, index);
+            mUiccCards[index] = new UiccCard(mContext, mCis[index], status, index, mPhone[index]);
+            // [L_50_PORTING] e: Mavis 20140923
+        } else {
+            //Update already existing card
+            mUiccCards[index].update(mContext, mCis[index] , status);
+        }
+
+        if (DBG) log("Notifying IccChangedRegistrants");
+        mIccChangedRegistrants.notifyRegistrants(new AsyncResult(null, index, null));
+
+    }
+这里就回到了开头说的UiccCard.update()会去创建CatService。
+其中，Phone,RIL,UiccCard,CatService的实例数量与SIM卡数量相同，一一对应。UiccController只有一个，里面管理一个UiccCard数组。
+
+二、CatService的消息机制
+先来看看CatService的构造方法
+    private CatService(CommandsInterface ci, UiccCardApplication ca, IccRecords ir,
+            Context context, IccFileHandler fh, UiccCard ic, int slotId) {
+        if (ci == null || ca == null || ir == null || context == null || fh == null
+                || ic == null) {
+            throw new NullPointerException(
+                    "Service: Input parameters must not be null");
+        }
+        mCmdIf = ci;
+        mContext = context;
+        mSlotId = slotId;
+        mHandlerThread = new HandlerThread("Cat Telephony service" + slotId);
+        mHandlerThread.start();
+
+        // Get the RilMessagesDecoder for decoding the messages.
+        mMsgDecoder = RilMessageDecoder.getInstance(this, fh, slotId);
+        if (null == mMsgDecoder) {
+            CatLog.d(this, "Null RilMessageDecoder instance");
+            return;
+        }
+        mMsgDecoder.start();
+
+        // Register ril events handling.
+        mCmdIf.setOnCatSessionEnd(this, MSG_ID_SESSION_END, null);
+        mCmdIf.setOnCatProactiveCmd(this, MSG_ID_PROACTIVE_COMMAND, null);
+        mCmdIf.setOnCatEvent(this, MSG_ID_EVENT_NOTIFY, null);
+        mCmdIf.setOnCatCallSetUp(this, MSG_ID_CALL_SETUP, null);
+        //mCmdIf.setOnSimRefresh(this, MSG_ID_REFRESH, null);
+
+        mCmdIf.registerForIccRefresh(this, MSG_ID_ICC_REFRESH, null);
+        mCmdIf.setOnCatCcAlphaNotify(this, MSG_ID_ALPHA_NOTIFY, null);
+
+        mIccRecords = ir;
+        mUiccApplication = ca;
+
+        // Register for SIM ready event.
+        mIccRecords.registerForRecordsLoaded(this, MSG_ID_ICC_RECORDS_LOADED, null);
+        CatLog.d(this, "registerForRecordsLoaded slotid=" + mSlotId + " instance:" + this);
+
+
+        mUiccController = UiccController.getInstance();
+        mUiccController.registerForIccChanged(this, MSG_ID_ICC_CHANGED, null);
+
+        // Check if STK application is available
+        mStkAppInstalled = isStkAppInstalled();
+
+        // + HTC_PHONE
+        registerHtcReceiver(true, mContext);
+        // - HTC_PHONE
+
+        CatLog.d(this, "Running CAT service on Slotid: " + mSlotId +
+                ". STK app installed:" + mStkAppInstalled);
+    }
+
+我们看到在CatService的初始化过程中主要完成了一下三个任务：
+   1、获取RilMessageDecoder对象mMsgDecoder；
+   2、向RIL注册相关的通知监听；
+   3、向UiccCardApplication、IccRecords注册SIM卡和Record的监听；
+
+在上面的CatService构造函数中我们看到，CatService注册了六个主要的监听器，有四个是比较重要的，按照接收的先后顺序分别是：
+MSG_ID_ICC_CHANGED          ----在7.0以后取代了MSG_ID_SIM_READY，由RIL发出，通知CatService，SIM卡已经就绪，需要CatService反馈是否就绪
+MSG_ID_PROACTIVE_COMMAND    ----CatService拿到SIM卡中的STK信息
+MSG_ID_RIL_MSG_DECODED      ----RilMessageDecoder解析完STK数据后给CatService发送通知
+MSG_ID_SESSION_END          ----RIL上传当前消息已经传输完毕
+
+2.2、 MSG_ID_ICC_CHANGED
+  @Override
+    public void handleMessage(Message msg) {
+        CatLog.d(this, "handleMessage[" + msg.what + "]");
+
+        switch (msg.what) {
+        case MSG_ID_ICC_CHANGED:
+            CatLog.d(this, "MSG_ID_ICC_CHANGED");
+            updateIccAvailability();
+            break;
+
+	}
+}
+
+    void updateIccAvailability() {
+        if (null == mUiccController) {
+            return;
+        }
+
+        CardState newState = CardState.CARDSTATE_ABSENT;
+        UiccCard newCard = mUiccController.getUiccCard(mSlotId);
+        if (newCard != null) {
+            newState = newCard.getCardState();
+        }
+        CardState oldState = mCardState;
+        mCardState = newState;
+        CatLog.d(this,"New Card State = " + newState + " " + "Old Card State = " + oldState);
+        if (oldState == CardState.CARDSTATE_PRESENT &&
+                newState != CardState.CARDSTATE_PRESENT) {
+            broadcastCardStateAndIccRefreshResp(newState, null);
+        } else if (oldState != CardState.CARDSTATE_PRESENT &&
+                newState == CardState.CARDSTATE_PRESENT) {
+            // Card moved to PRESENT STATE.
+            mCmdIf.reportStkServiceIsRunning(null);
+        }
+    }
+在这里会判断当前SIM卡的状态，如果SIM卡不是PRESENT就会发出广播broadcastCardStateAndIccRefreshResp(newState, null)，如果是PRESENT就调用 mCmdIf.reportStkServiceIsRunning(null)，RIL将会向Modem发送RIL_REQUEST_REPORT_STK_SERVICE_IS_RUNNING的消息，从而告诉Modem，CatService已经准备好接受STK的数据了。
+
+2.2、MSG_ID_PROACTIVE_COMMAND
+Modem接收到CatService已经启动的消息后，就会上报MSG_ID_PROACTIVE_COMMAND的消息，该消息中包含了SIM卡中存储的STK信息，此时CatService需要将这些信息解析并保存，用于构建STK菜单。
+    public void handleMessage(Message msg) {  
+        switch (msg.what) {  
+            case MSG_ID_SESSION_END:  
+            case MSG_ID_PROACTIVE_COMMAND:  
+            case MSG_ID_EVENT_NOTIFY:  
+            case MSG_ID_REFRESH:  
+                String data = null;  
+                if (msg.obj != null) {  
+                    AsyncResult ar = (AsyncResult) msg.obj;  
+                    if (ar != null && ar.result != null) {  
+                        try {  
+                            data = (String) ar.result;  
+                        } catch (ClassCastException e) {  
+                            break;  
+                        }  
+                    }  
+                }  
+                //通过RilMessageDecoder去解析数据  
+                mMsgDecoder.sendStartDecodingMessageParams(new RilMessage(msg.what, data));  
+                break;  
+            default:  
+                throw new AssertionError("Unrecognized CAT command: " + msg.what);  
+        }  
+    }  
+我们看到，对于拿到的数据时通过mMsgDecoder去解析的，也就是RilMessageDecoder的对象，这个对象是在CatService的构造函数中被创建的。
+当数据解析完成后CatService中将会收到MSG_ID_RIL_MSG_DECODED的消息。
+
+2.3、MSG_ID_RIL_MSG_DECODED
+这个消息并不是从Ril上传上来的，而是在6.2.1中，对MSG_ID_PROACTIVE_COMMAND消息处理之后，由RilMessageDecoder发送过来的，它标志着刚才从Modem接收到的数据已经被解析完毕。而这个消息要做的任务就是将解析后的数据传递给RIL和StkAppService.java。
+    @CatService.java  
+    public void handleMessage(Message msg) {  
+        switch (msg.what) {  
+            case MSG_ID_RIL_MSG_DECODED:  
+                handleRilMsg((RilMessage) msg.obj);  
+                break;   
+            default:  
+                throw new AssertionError("Unrecognized CAT command: " + msg.what);  
+        }  
+    }  
+
+接着往下看：
+private void handleRilMsg(RilMessage rilMsg) {  
+    CommandParams cmdParams = null;  
+    switch (rilMsg.mId) {  
+        case MSG_ID_PROACTIVE_COMMAND:  
+            try {  
+                //拿到解析后的数据  
+                cmdParams = (CommandParams) rilMsg.mData;  
+            } catch (ClassCastException e) {  
+            }  
+            if (cmdParams != null) {  
+                if (rilMsg.mResCode == ResultCode.OK) {  
+                    //处理当前的数据  
+                    handleCommand(cmdParams, true);  
+                } else {  
+                    sendTerminalResponse(cmdParams.mCmdDet, rilMsg.mResCode, false, 0, null);  
+                }  
+            }  
+            break;  
+    }  
+}  
+private void handleCommand(CommandParams cmdParams, boolean isProactiveCmd) {  
+    CharSequence message;  
+    CatCmdMessage cmdMsg = new CatCmdMessage(cmdParams);  
+    switch (cmdParams.getCommandType()) {  
+        case SET_UP_MENU:  
+            if (removeMenu(cmdMsg.getMenu())) {  
+                mMenuCmd = null;  
+            } else {  
+                mMenuCmd = cmdMsg;  
+            }  
+            sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);  
+            break;  
+        case DISPLAY_TEXT:  
+            if (!cmdMsg.geTextMessage().responseNeeded) {  
+                sendTerminalResponse(cmdParams.mCmdDet, ResultCode.OK, false, 0, null);  
+            }  
+            break;  
+        case SELECT_ITEM:  
+        case GET_INPUT:  
+        case GET_INKEY:  
+            break;  
+        case SEND_DTMF:  
+        case SEND_SMS:  
+        case SEND_SS:  
+        case SEND_USSD:  
+            if ((((DisplayTextParams)cmdParams).mTextMsg.text != null) && (((DisplayTextParams)cmdParams).mTextMsg.text.equals(STK_DEFAULT))) {  
+                message = mContext.getText(com.android.internal.R.string.sending);  
+                ((DisplayTextParams)cmdParams).mTextMsg.text = message.toString();  
+            }  
+            break;  
+        case PLAY_TONE:  
+            break;  
+        case SET_UP_CALL:  
+            if ((((CallSetupParams) cmdParams).mConfirmMsg.text != null) && (((CallSetupParams) cmdParams).mConfirmMsg.text.equals(STK_DEFAULT))) {  
+                message = mContext.getText(com.android.internal.R.string.SetupCallDefault);  
+                ((CallSetupParams) cmdParams).mConfirmMsg.text = message.toString();  
+            }  
+            break;  
+        default:  
+            CatLog.d(this, "Unsupported command");  
+            return;  
+    }  
+    mCurrntCmd = cmdMsg;  
+    Intent intent = new Intent(AppInterface.CAT_CMD_ACTION);  
+    intent.putExtra("STK CMD", cmdMsg);  
+    mContext.sendBroadcast(intent);  
+
+我们看到，在handleCommand()中，对于主要的几种数据类型，比如SET_UP_MENU、DISPLAY_TEXT的最后都有sendTerminalResponse()的操作，而这个操作的作用就是将数据封装后发送给RIL。并且在handleCommand()的最后，通过广播mContext.sendBroadcast(intent);的形式将当前解析的结果发送出来，发送之后就有STK应用的StkAppService.java负责接收，并构建STK菜单。
+
+2.4、MSG_ID_SESSION_END
+ 这个消息主要是RIL用于告诉CatService，当前的会话已经传输完毕，和MSG_ID_PROACTIVE_COMMAND的消息流程类似，只是更加的简单，略。
+
+至此，CatService的主要作用分析完毕！
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
