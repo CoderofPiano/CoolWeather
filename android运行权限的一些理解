@@ -1,0 +1,73 @@
+http://blog.csdn.net/lmj623565791/article/details/50709663
+http://blog.csdn.net/u010661782/article/details/52549307
+
+
+什么情况下会检查权限（code中调用哪些方法，哪些接口）：
+
+
+
+对于6.0以下的权限及在安装的时候，根据权限声明产生一个权限列表，用户只有在同意之后才能完成app的安装，造成了我们想要使用某个app，就要默默忍受其一些不必要的权限（比如是个app都要访问通讯录、短信等）。而在6.0以后，我们可以直接安装，当app需要我们授予不恰当的权限的时候，我们可以予以拒绝（比如：单机的象棋对战，请求访问任何权限，我都是不同意的）。当然你也可以在设置界面对每个app的权限进行查看，以及对单个权限进行授权或者解除授权。
+
+新的权限机制更好的保护了用户的隐私，Google将权限分为两类，一类是Normal Permissions，这类权限一般不涉及用户隐私，是不需要用户进行授权的，比如手机震动、访问网络等；另一类是Dangerous Permission，一般是涉及到用户隐私的，需要用户进行授权，比如读取sdcard、访问通讯录等。
+
+
+关于Manifest,Setting权限管理列表，安装时权限列表，代码中的权限检查和申请（运行时权限）的理解总结：
+Android6.0之后使用运行时权限机制，对权限做了划分：1普通权限   2危险权限（9组25个，每组授权一个即默认该组都授权）
+
+ 1，普通权限在Manifest中注册后，系统默认即会授权。
+
+ 2，危险权限在Manifest中注册后，默认不会授权，当运行程序到需要使用该权限时，需要在code中做权限检查和申请的处理,主要使用ContextCompat.checkSelfPermission()
+    ，ActivityCompat.requestPermission()以及onRequestPermissionsResult。这里就有个疑问，既然危险权限在Manifst中注册了也不会授权，还是要在code里申请，那还
+    注册干嘛？我的理解是用于Setting下面权限使用情况的显示和管理，让用户可以随时看见该APP使用到哪些权限，同时可以手动在这里开关。而如果只在code里申请某权限，
+    用户在某次运行时授予了该权限，之后用户想关闭该权限却会发现没有入口（因为Manifest下未注册该权限，Setting下不会列出该权限）。 
+ 
+ 3, Manifest是注册申请权限，注册了不代表就已经被授权。
+    在6.0以前，当安装应用时，系统会扫描应用的Manifest，生成对应的权限列表对话框，需要用户确认授权后才能安装，如果拒绝则不能安装。
+    在6.0以后，安装应用时不会弹出权限列表对话框，而是直接安装。
+
+ 4,Setting里某APP的权限管理列表所显示的权限基于该APP的Manifest。
+
+Dangerous Permissions:
+
+group:android.permission-group.CONTACTS
+  permission:android.permission.WRITE_CONTACTS
+  permission:android.permission.GET_ACCOUNTS
+  permission:android.permission.READ_CONTACTS
+
+group:android.permission-group.PHONE
+  permission:android.permission.READ_CALL_LOG
+  permission:android.permission.READ_PHONE_STATE
+  permission:android.permission.CALL_PHONE
+  permission:android.permission.WRITE_CALL_LOG
+  permission:android.permission.USE_SIP
+  permission:android.permission.PROCESS_OUTGOING_CALLS
+  permission:com.android.voicemail.permission.ADD_VOICEMAIL
+
+group:android.permission-group.CALENDAR
+  permission:android.permission.READ_CALENDAR
+  permission:android.permission.WRITE_CALENDAR
+
+group:android.permission-group.CAMERA
+  permission:android.permission.CAMERA
+
+group:android.permission-group.SENSORS
+  permission:android.permission.BODY_SENSORS
+
+group:android.permission-group.LOCATION
+  permission:android.permission.ACCESS_FINE_LOCATION
+  permission:android.permission.ACCESS_COARSE_LOCATION
+
+group:android.permission-group.STORAGE
+  permission:android.permission.READ_EXTERNAL_STORAGE
+  permission:android.permission.WRITE_EXTERNAL_STORAGE
+
+group:android.permission-group.MICROPHONE
+  permission:android.permission.RECORD_AUDIO
+
+group:android.permission-group.SMS
+  permission:android.permission.READ_SMS
+  permission:android.permission.RECEIVE_WAP_PUSH
+  permission:android.permission.RECEIVE_MMS
+  permission:android.permission.RECEIVE_SMS
+  permission:android.permission.SEND_SMS
+  permission:android.permission.READ_CELL_BROADCASTS
