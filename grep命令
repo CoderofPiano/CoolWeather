@@ -1,0 +1,15 @@
+// 搜尋當下資料夾的所有檔案(包含再目錄內的)
+grep -r [key word] *
+ex : grep -r Gsm *
+
+// 搜尋不分大小寫(ex ： Gsm 跟GSM都會被找出來)
+grep -i [key word] *
+ex ： grep -i Gsm *
+
+// 搜尋完整keyword(ex : Gsm 會被列出 但GsmPhone不會)
+grep -w [key word] *
+grep -w Gsm *
+
+// 搜尋多個key word
+grep -E "[key word1]|[key word2]|...." *
+ex : grep -E "GsmPhone|CdmaPhone" *
