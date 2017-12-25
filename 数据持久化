@@ -1,0 +1,161 @@
+数据的持久化有三种方式，文件存储，SharedPreference存储，数据库存储。
+这三种方式的存储路径是在/data/data/<packagename>/下面，对应会生成各自的存储文件，所占用的是机身存储的内部存储空间。
+
+一，数据持久化之文件存储：
+存储路径:/data/data/<packagename>/files/ 
+
+public class MainActivity extends AppCompatActivity {
+
+    private EditText mEditText;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        mEditText=(EditText)findViewById(R.id.edit);
+        String input=load();//读取文件中的内容，实际项目中可能会启动子线程去做。
+        if (!TextUtils.isEmpty(input)){
+            mEditText.setText(input);
+            mEditText.setSelection(input.length());
+            Toast.makeText(this,"Restoring succeeded",Toast.LENGTH_LONG).show();
+        }
+
+    }
+
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        String input=mEditText.getText().toString();
+        if (!TextUtils.isEmpty(input)){
+            save(input);//把信息写到文件中，实际项目中可能会启动子线程去做。
+        }
+    }
+
+    private String load() {
+        FileInputStream in = null;
+        BufferedReader reader = null;
+        StringBuilder builder = new StringBuilder();
+        try {
+            in = openFileInput("file01");
+            reader = new BufferedReader(new InputStreamReader(in));
+            String line=null;
+            while ((line=reader.readLine())!=null){
+                builder.append(line);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (reader!=null){
+                try {
+                    reader.close();//关闭流，防止内存泄漏
+                }catch (IOException e){
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return builder.toString();
+    }
+
+    private void save(String inputText){
+        FileOutputStream out= null;
+        BufferedWriter writer=null;
+        try {
+            out=openFileOutput("file01", Context.MODE_PRIVATE);
+            writer=new BufferedWriter(new OutputStreamWriter(out));
+            writer.write(inputText);
+        }catch (IOException e){
+            e.printStackTrace();
+        }finally {
+            if (writer!=null){
+                try {
+                    writer.close();/关闭流，防止内存泄漏
+                }catch (IOException e){
+                    e.printStackTrace();
+                }
+            }
+        }
+
+    }
+}
+
+
+
+二，数据库存储（SQLiteOpenHelper.java, SQLiteDatabase.java)
+1，创建数据库：
+SQLiteOpenHelper dbHelper=new MyDatabaseHelper(this,"BookStore.db",null,3);
+dbHelper.getReadableDatabase();//没有就创建，同时执行onCreate()创建表;
+dbHelper.getWritableDatabase()   如果version有增加则执行 onUpgrade(）进行升级;
+                                 有就直接返回。
+
+
+2,创建表：
+public static final String CREATE_BOOK="create table Book ("
+            + "id integer primary key autoincrement,"
+            + "author text,"
+            + "price real,"
+            + "pages integer,"
+            + "name text)";
+db.execSQL(CREATE_BOOK);
+可在SQLiteOpenHelper.onCreate()/SQLiteOpenHelper.onUpgrade(）中执行创建表的sql语句。
+
+3.添加数据：
+SQLiteDatabase db=dbHelper.getWritableDatabase();
+                ContentValues values=new ContentValues();
+                values.put("pages",454);
+                values.put("name","西游记");
+                values.put("price",25.9);
+                values.put("author","张三");
+                db.insert("Book",null,values);
+                values.clear();
+
+4.修改数据：
+ SQLiteDatabase db=dbHelper.getWritableDatabase();
+                ContentValues values=new ContentValues();
+                values.put("price",100);
+                values.put("pages",999);
+                db.update("Book",values,"name=?",new String[]{"水浒传"});
+5.删除数据：
+  SQLiteDatabase db=dbHelper.getWritableDatabase();
+                 db.delete("Book","id=?",new String[]{"4"});
+
+6.查询数据：
+SQLiteDatabase db=dbHelper.getWritableDatabase();
+               Cursor cursor=db.query("Book",null,null,null,null,null,null);
+               if (cursor.moveToFirst()){
+                   do{
+                       String name=cursor.getString(cursor.getColumnIndex("name"));
+                       String author=cursor.getString(cursor.getColumnIndex("author"));
+                       int pages=cursor.getInt(cursor.getColumnIndex("pages"));
+                       double price=cursor.getDouble(cursor.getColumnIndex("price"));
+                       Log.d("MainActivity","=================>");
+                       Log.d("MainActivity","book name is"+ name);
+                       Log.d("MainActivity","book author is"+ author);
+                       Log.d("MainActivity","book pages is"+ pages);
+                       Log.d("MainActivity","book price is"+ price);
+
+                   }while (cursor.moveToNext());
+               }
+               cursor.close();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
