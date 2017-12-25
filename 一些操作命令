@@ -1,0 +1,95 @@
+sudo rm -rf java-8-openjdk-amd64
+
+命令行暂时更改ANDROID_HOME路径：
+export ANDROID_HOME=/work/SDK/android-sdk-linux
+查看路径： echo $ANDROID_HOME
+
+JDK切换：
+sudo gedit /etc/profile
+source /etc/profile
+java -version
+gedit ~/.bashrc 
+source ~/.bashrc
+java -version
+
+scp -r archermind@10.13.11.25:/work/rom/E36 .
+
+./gradlew  --daemon clean
+./gradlew --daemon assembleRelease
+./gradlew --offline --daemon assembleRelease
+
+
+adb logcat *:\E
+adb logcat >xxx.log
+抓取radio log
+adb logcat -b radio > /work/radio.log
+
+
+查看内存：
+DDMS
+adb shell下：
+adb shell  am force-stop com.android.incallui
+dumpsys meminfo pid
+
+source build/envsetup.sh;
+
+adb push ./build/outputs/apk/Telephony_MTK-release.apk /system/priv-app/Telephony/Telephony-release.apk
+
+git config --global alias.lg "log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative"
+git config --global core.editor "vim"  # 设置Editor使用vim
+
+
+git push origin HEAD:refs/for/app/apps/InCallUI/8.10/and7.0/N70
+
+设置本地分支跟踪远程分支：
+git branch --set-upstream-to=origin/app/apps/InCallUI/8.10/and7.0/N70 remotes/origin/htc/app/apps/InCallUI/8.10/and7.0/N70
+或
+git checkout -b temp --track origin/app/apps/InCallUI/8.00/and6.0.1/M601
+git checkout -b local-branchname origin/remote_branchname  就可以将远程分支映射到本地命名为local-branchname  的一分支
+
+
+修改代码提交的gerrit
+git remote -v
+git remote remove origin
+git remote add origin  
+
+
+刷机命令：
+adb reboot bootloader
+chmod +x fastboot
+sudo ./fastboot oem rebootRUU
+
+
+sudo ./fastboot flash zip xx_partial.zip （即较小的那个zip文件，必须首先flash partial包）
+sudo ./fastboot flash zip xx_signed.zip（即较大的zip文件）
+sudo ./fastboot reboot
+
+备份手机APK：
+adb pull /system/priv-app/Telecom/Telecom.apk /work
+adb pull /sdcard/UCDownloads/pictures /work
+
+am start -n com.android.stk/com.android.stk.StkLauncherActivity 
+am start -n com.android.stk/com.android.stk.StkDialogActivity --ei dialog_mode 15 
+am start -n com.android.phone/com.android.phone.CannedMessageActivity --ei dialog_mode 0
+
+adb shell am start -n com.android.incallui/com.android.incallui.activity.DeclineAlertActivity --ei slotId 0 --es from "aaa"
+adb shell am start -a android.intent.action.CALL tel:112
+
+adb shell am broadcast -a com.android.test --es test_string "this is test string" --ei test_int 100 --ez test_boolean true
+
+
+androidTest:
+adb shell am instrument -e size small/medium/large -w <test_package_name>/<test_runner_class>
+adb shell am instrument -w -r -e package com.android.services.telephony -e debug false com.android.phone.test/android.support.test.runner.AndroidJUnitRunner
+
+
+F5(单步运行)：即逐步执行程序段中的每一步代码，如果语句为子程序或引用程序等模块，将进入模块内部继续单步运行。
+F6(执行)：逐行执行当前的程序代码，但不会进入程序模块内部。
+F7(返回)：如果目前状态在某个子程序的模块内部，则返回调用该模块的上一级程序。
+F8(继续运行)：跳过后续语句行，直到遇到下一个断点或者观测点为止
+
+Radio log中查看SIM卡信息关键字：
+oldSS=
+
+
+
