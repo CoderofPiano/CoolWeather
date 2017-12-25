@@ -1,0 +1,37 @@
+发射机制：程序运行状态中，对任意一个类，都能够知道这个类的所有属性与方法。
+          对任意一个对象都能够调用它的任意一个方法和属性。
+
+使用方式：
+
+Class TlMgr=Class.forName("com.htc.service.TelephonyManager");//获取当前类的Calss对象，也可以通过某个对象的getClass（）方法获得。
+Method mthNew=TlMgr.getMethod("getDefault");//通过Class对象获取该类的某个方法，传入方法名和方法参数的Class对象，返回该方法的Method对象。
+Method mthGetter=TlMgr.getMethod("generalGetter",String.class,Bundle.class);////通过Class对象获取该类的某个方法，传入方法名和方法参数的Class对象，返回该方法的Method对象。
+Object objTlmgr=null;
+objTlmgr=mthNew.invoke(null);//使用Method.invoke()触发反射得到的方法，获取当前类的实例，也可以使用cass.NewInStance(),看具体情况而定。
+
+Bundle result=new Bundle();
+result.putString("apnType","mms");
+result=(BmthGetter.invoke(TlMgr,"isDataPossible",result);
+
+
+
+
+
+private static TelephonyManager sInstance = new TelephonyManager();
+
+public static TelephonyManager getDefault() {
+        return sInstance;
+}
+
+
+public Bundle generalGetter(String methodName, Bundle bundle) {
+   try {
+       return getITelephony().generalGetter(methodName, bundle);
+    } catch (Exception e) {
+       Log.w(TAG, "generalGetter exception", e);
+       return new Bundle();
+    }
+}
+
+
+注意：getDefault() 是静态方法，所以在反射时没有传反射类的实例，generalGetter不是静态，所以传了TlMgr。
